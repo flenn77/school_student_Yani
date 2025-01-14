@@ -1,0 +1,1254 @@
+Chemin : school-service/models/school.js
+Titre : school.js
+Contenu :
+const { DataTypes } = require("sequelize");
+const sequelize = require("../config/db");
+
+const School = sequelize.define("School", {
+  id: {
+    type: DataTypes.INTEGER,
+    autoIncrement: true,
+    primaryKey: true,
+  },
+  name: DataTypes.STRING,
+  adress: DataTypes.STRING,
+  directorName: DataTypes.STRING,
+});
+
+module.exports = School;
+----------------------------------
+Chemin : school-service/Dockerfile
+Titre : Dockerfile
+Contenu :
+FROM node:18-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+
+EXPOSE 8081
+
+CMD ["npm", "run", "dev"]
+----------------------------------
+Chemin : school-service/package.json
+Titre : package.json
+Contenu :
+{
+  "name": "school-service",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "pg": "^8.13.1",
+    "sequelize": "^6.37.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}
+----------------------------------
+Chemin : school-service/routes/schoolRoutes.js
+Titre : schoolRoutes.js
+Contenu :
+const express = require("express");
+const router = express.Router();
+const School = require("../models/school");
+
+// CREATE
+router.post("/", async (req, res) => {
+  try {
+    const school = await School.create(req.body);
+    res.status(201).json(school);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// READ ALL
+router.get("/", async (req, res) => {
+  try {
+    const schools = await School.findAll();
+    res.json(schools);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// READ ONE
+router.get("/:id", async (req, res) => {
+  try {
+    const school = await School.findByPk(req.params.id);
+    if (!school) {
+      return res.status(404).json({ error: "School not found" });
+    }
+    res.json(school);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// UPDATE
+router.put("/:id", async (req, res) => {
+  try {
+    const [updated] = await School.update(req.body, {
+      where: { id: req.params.id },
+    });
+    if (!updated) {
+      return res.status(404).json({ error: "School not found" });
+    }
+    const updatedSchool = await School.findByPk(req.params.id);
+    res.json(updatedSchool);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE
+router.delete("/:id", async (req, res) => {
+  try {
+    const deleted = await School.destroy({ where: { id: req.params.id } });
+    if (!deleted) {
+      return res.status(404).json({ error: "School not found" });
+    }
+    res.status(204).end();
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = router;
+----------------------------------
+Chemin : school-service/config/db.js
+Titre : db.js
+Contenu :
+const { Sequelize } = require("sequelize");
+
+const sequelize = new Sequelize(
+  process.env.POSTGRES_DB || "schooldb",    // Nom de la DB
+  process.env.POSTGRES_USER || "postgres",  // User
+  process.env.POSTGRES_PASSWORD || "postgres", // Password
+  {
+    host: process.env.POSTGRES_HOST || "localhost",
+    port: process.env.POSTGRES_PORT || 5432,
+    dialect: "postgres",
+  }
+);
+
+module.exports = sequelize;
+----------------------------------
+Chemin : school-service/index.js
+Titre : index.js
+Contenu :
+const express = require("express");
+const cors = require("cors"); // Import de cors
+const sequelize = require("./config/db");
+const schoolRoutes = require("./routes/schoolRoutes");
+
+const app = express();
+const PORT = process.env.PORT || 8081;
+
+// Activer CORS avec une configuration explicite
+app.use(
+  cors({
+    origin: "http://localhost:8080", // Autorise uniquement cette origine
+    methods: "GET,POST,PUT,DELETE", // Méthodes autorisées
+    allowedHeaders: "Content-Type,Authorization", // Headers autorisés
+  })
+);
+
+// Middleware pour ajouter manuellement les en-têtes si nécessaire
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "http://localhost:8080");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+  );
+  if (req.method === "OPTIONS") {
+    res.header("Access-Control-Allow-Methods", "PUT, POST, PATCH, DELETE, GET");
+    return res.status(200).json({});
+  }
+  next();
+});
+
+app.use(express.json());
+app.use("/schools", schoolRoutes);
+
+sequelize.sync()
+  .then(() => {
+    console.log("Connected to PostgreSQL and synced models");
+    app.listen(PORT, () => {
+      console.log(`School service running on port ${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error("Unable to connect to the database:", err);
+  });
+----------------------------------
+Chemin : my-vue-front/src/style.css
+Titre : style.css
+Contenu :
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #242424;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  font-weight: 500;
+  color: #646cff;
+  text-decoration: inherit;
+}
+a:hover {
+  color: #535bf2;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+button {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: #1a1a1a;
+  cursor: pointer;
+  transition: border-color 0.25s;
+}
+button:hover {
+  border-color: #646cff;
+}
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+.card {
+  padding: 2em;
+}
+
+#app {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color: #213547;
+    background-color: #ffffff;
+  }
+  a:hover {
+    color: #747bff;
+  }
+  button {
+    background-color: #f9f9f9;
+  }
+}
+----------------------------------
+Chemin : my-vue-front/src/router/index.js
+Titre : index.js
+Contenu :
+import { createRouter, createWebHistory } from 'vue-router'
+import HomeView from '../views/HomeView.vue'
+import SchoolsView from '../views/SchoolsView.vue'
+import StudentsView from '../views/StudentsView.vue'
+
+const routes = [
+  { path: '/', name: 'home', component: HomeView },
+  { path: '/schools', name: 'schools', component: SchoolsView },
+  { path: '/students', name: 'students', component: StudentsView },
+]
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes,
+})
+
+export default router
+----------------------------------
+Chemin : my-vue-front/src/main.js
+Titre : main.js
+Contenu :
+import 'bootstrap/dist/css/bootstrap.min.css';
+import 'bootstrap/dist/js/bootstrap.bundle.min.js'; // Bootstrap JS
+import 'bootstrap-icons/font/bootstrap-icons.css'; // Bootstrap Icons
+import { createApp } from 'vue';
+import App from './App.vue';
+import router from './router';
+
+const app = createApp(App);
+app.use(router);
+app.mount('#app');
+----------------------------------
+Chemin : my-vue-front/src/components/HelloWorld.vue
+Titre : HelloWorld.vue
+Contenu :
+<script setup>
+import { ref } from 'vue'
+
+defineProps({
+  msg: String,
+})
+
+const count = ref(0)
+</script>
+
+<template>
+  <h1>{{ msg }}</h1>
+
+  <div class="card">
+    <button type="button" @click="count++">count is {{ count }}</button>
+    <p>
+      Edit
+      <code>components/HelloWorld.vue</code> to test HMR
+    </p>
+  </div>
+
+  <p>
+    Check out
+    <a href="https://vuejs.org/guide/quick-start.html#local" target="_blank"
+      >create-vue</a
+    >, the official Vue + Vite starter
+  </p>
+  <p>
+    Learn more about IDE Support for Vue in the
+    <a
+      href="https://vuejs.org/guide/scaling-up/tooling.html#ide-support"
+      target="_blank"
+      >Vue Docs Scaling up Guide</a
+    >.
+  </p>
+  <p class="read-the-docs">Click on the Vite and Vue logos to learn more</p>
+</template>
+
+<style scoped>
+.read-the-docs {
+  color: #888;
+}
+</style>
+----------------------------------
+Chemin : my-vue-front/src/App.vue
+Titre : App.vue
+Contenu :
+<template>
+  <div id="app">
+    <h1>Vue Front - Microservices Demo</h1>
+    
+    <nav>
+      <router-link to="/">Accueil</router-link> |
+      <router-link to="/schools">Schools</router-link> |
+      <router-link to="/students">Students</router-link>
+    </nav>
+
+    <hr />
+
+    <!-- Affichage du composant en fonction de la route -->
+    <router-view />
+  </div>
+</template>
+
+<script>
+export default {
+  name: 'App'
+}
+</script>
+
+<style>
+#app {
+  padding: 20px;
+  font-family: sans-serif;
+}
+nav {
+  margin-bottom: 10px;
+}
+</style>
+----------------------------------
+Chemin : my-vue-front/src/views/HomeView.vue
+Titre : HomeView.vue
+Contenu :
+<template>
+    <div
+        class="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-blue-100 to-purple-200 text-black">
+        <div class="bg-white p-8 rounded-lg shadow-lg max-w-md text-center">
+            <h2 class="text-3xl font-bold mb-6">Bienvenue 🎉</h2>
+            <p class="text-lg mb-4">Ceci est la page d'accueil de notre front Vue.</p>
+            <p class="text-base mb-6">Utilisez la navigation ci-dessus pour explorer la liste des écoles et des
+                étudiants.</p>
+            <br>
+        </div>
+    </div>
+</template>
+
+<script>
+export default {
+    name: 'HomeView'
+};
+</script>
+----------------------------------
+Chemin : my-vue-front/src/views/SchoolsView.vue
+Titre : SchoolsView.vue
+Contenu :
+<template>
+  <div class="min-h-screen bg-gray-50 text-gray-800 flex flex-col items-center p-6">
+    <h2 class="text-3xl font-bold mb-6 text-blue-600">Liste des écoles</h2>
+
+    <!-- Message d'erreur -->
+    <div v-if="error" class="text-red-500 mb-4">{{ error }}</div>
+
+    <!-- Tableau des écoles -->
+    <table class="table-auto w-full max-w-3xl mb-8 bg-white shadow-lg rounded-lg">
+      <thead class="bg-gray-200">
+        <tr>
+          <th class="px-4 py-2 text-left">Nom</th>
+          <th class="px-4 py-2 text-left">Adresse</th>
+          <th class="px-4 py-2 text-left">Directeur</th>
+          <th class="px-4 py-2 text-center">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr
+          v-for="school in schools"
+          :key="school.id"
+          class="border-t border-gray-300 hover:bg-gray-100"
+        >
+          <td class="px-4 py-2">{{ school.name }}</td>
+          <td class="px-4 py-2">{{ school.adress }}</td>
+          <td class="px-4 py-2">{{ school.directorName }}</td>
+          <td class="px-4 py-2 text-center space-x-2">
+            <button
+              @click="editSchool(school)"
+              class="px-4 py-2 bg-black text-white rounded hover:bg-gray-800 transition"
+            >
+              Modifier
+            </button>
+            <button
+              @click="deleteSchool(school.id)"
+              class="px-4 py-2 bg-black text-white rounded hover:bg-gray-800 transition"
+            >
+              Supprimer
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Formulaire -->
+    <div class="w-full max-w-3xl bg-white shadow rounded-lg p-6">
+      <h3 class="text-xl font-semibold mb-4">
+        {{ isEditing ? "Modifier une école" : "Ajouter une école" }}
+      </h3>
+      <form @submit.prevent="isEditing ? updateSchool() : addSchool()" class="space-y-6">
+        <div>
+          <label for="name" class="block text-sm font-medium text-gray-700">
+            Nom de l'école
+          </label>
+          <input
+            id="name"
+            type="text"
+            v-model="form.name"
+            required
+            placeholder="Nom de l'école"
+            class="mt-1 block w-full p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-black"
+          />
+        </div>
+        <div>
+          <label for="adress" class="block text-sm font-medium text-gray-700">
+            Adresse
+          </label>
+          <input
+            id="adress"
+            type="text"
+            v-model="form.adress"
+            required
+            placeholder="Adresse"
+            class="mt-1 block w-full p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-black"
+          />
+        </div>
+        <div>
+          <label for="directorName" class="block text-sm font-medium text-gray-700">
+            Nom du directeur
+          </label>
+          <input
+            id="directorName"
+            type="text"
+            v-model="form.directorName"
+            required
+            placeholder="Nom du directeur"
+            class="mt-1 block w-full p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-black"
+          />
+        </div>
+        <div class="flex justify-end space-x-4">
+          <button
+            type="submit"
+            class="px-6 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition"
+          >
+            {{ isEditing ? "Mettre à jour" : "Ajouter" }}
+          </button>
+          <button
+            type="button"
+            @click="resetForm"
+            v-if="isEditing"
+            class="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition"
+          >
+            Annuler
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</template>
+
+<script>
+import {
+  getAllSchools,
+  createSchool,
+  updateSchool,
+  deleteSchool,
+} from "../services/api.js";
+
+export default {
+  name: "SchoolsView",
+  data() {
+    return {
+      schools: [],
+      form: {
+        id: null,
+        name: "",
+        adress: "",
+        directorName: "",
+      },
+      isEditing: false,
+      error: null,
+    };
+  },
+  async mounted() {
+    await this.fetchSchools();
+  },
+  methods: {
+    async fetchSchools() {
+      try {
+        const response = await getAllSchools();
+        this.schools = response.data;
+      } catch (err) {
+        this.error = err.message;
+      }
+    },
+    async addSchool() {
+      try {
+        await createSchool(this.form);
+        this.resetForm();
+        await this.fetchSchools();
+      } catch (err) {
+        this.error = err.message;
+      }
+    },
+    editSchool(school) {
+      this.form = { ...school };
+      this.isEditing = true;
+    },
+    async updateSchool() {
+      try {
+        await updateSchool(this.form.id, this.form);
+        this.resetForm();
+        await this.fetchSchools();
+      } catch (err) {
+        this.error = err.message;
+      }
+    },
+    async deleteSchool(id) {
+      try {
+        await deleteSchool(id);
+        await this.fetchSchools();
+      } catch (err) {
+        this.error = err.message;
+      }
+    },
+    resetForm() {
+      this.form = { id: null, name: "", adress: "", directorName: "" };
+      this.isEditing = false;
+    },
+  },
+};
+</script>
+
+<style scoped>
+.error {
+  color: red;
+}
+</style>
+----------------------------------
+Chemin : my-vue-front/src/views/StudentsView.vue
+Titre : StudentsView.vue
+Contenu :
+<template>
+  <div class="min-h-screen bg-gray-50 text-gray-800 flex flex-col items-center p-6">
+    <h2 class="text-3xl font-bold mb-6 text-blue-600">Liste des étudiants</h2>
+
+    <!-- Message d'erreur -->
+    <div v-if="error" class="text-red-500 mb-4">{{ error }}</div>
+
+    <!-- Tableau des étudiants -->
+    <table class="table-auto w-full max-w-5xl bg-white shadow-md rounded-lg mb-8">
+      <thead class="bg-gray-200">
+        <tr>
+          <th class="px-4 py-2 text-left">Nom</th>
+          <th class="px-4 py-2 text-left">Genre</th>
+          <th class="px-4 py-2 text-left">School ID</th>
+          <th class="px-4 py-2 text-center">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr
+          v-for="student in students"
+          :key="student._id"
+          class="border-t hover:bg-gray-100"
+        >
+          <td class="px-4 py-2">{{ student.name }}</td>
+          <td class="px-4 py-2">{{ student.genre }}</td>
+          <td class="px-4 py-2">{{ student.schoolId }}</td>
+          <td class="px-4 py-2 text-center space-x-2">
+            <button
+              @click="editStudent(student)"
+              class="px-4 py-2 bg-black text-white rounded hover:bg-gray-800 transition"
+            >
+              Modifier
+            </button>
+            <button
+              @click="deleteStudentConfirmation(student._id)"
+              class="px-4 py-2 bg-black text-white rounded hover:bg-gray-800 transition"
+            >
+              Supprimer
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Formulaire pour ajouter/modifier -->
+    <div class="w-full max-w-5xl bg-white shadow rounded-lg p-6">
+      <h3 class="text-xl font-semibold mb-4">
+        {{ isEditing ? "Modifier un étudiant" : "Ajouter un étudiant" }}
+      </h3>
+      <form @submit.prevent="isEditing ? updateStudent() : addStudent()" class="space-y-4">
+        <div>
+          <label for="name" class="block text-sm font-medium text-gray-700">Nom</label>
+          <input
+            id="name"
+            type="text"
+            v-model="form.name"
+            required
+            placeholder="Nom"
+            class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <div>
+          <label for="genre" class="block text-sm font-medium text-gray-700">Genre</label>
+          <input
+            id="genre"
+            type="text"
+            v-model="form.genre"
+            required
+            placeholder="Genre (M/F)"
+            class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <div>
+          <label for="schoolId" class="block text-sm font-medium text-gray-700">ID de l'école</label>
+          <input
+            id="schoolId"
+            type="number"
+            v-model="form.schoolId"
+            required
+            placeholder="ID de l'école"
+            class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <div class="flex justify-end space-x-2">
+          <button
+            type="submit"
+            class="px-4 py-2 bg-black text-white rounded hover:bg-gray-800 transition"
+          >
+            {{ isEditing ? "Mettre à jour" : "Ajouter" }}
+          </button>
+          <button
+            type="button"
+            @click="resetForm"
+            v-if="isEditing"
+            class="px-4 py-2 bg-black text-white rounded hover:bg-gray-800 transition"
+          >
+            Annuler
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</template>
+
+<script>
+import {
+  getAllStudents,
+  createStudent,
+  updateStudent,
+  deleteStudent,
+} from "../services/api.js";
+
+export default {
+  name: "StudentsView",
+  data() {
+    return {
+      students: [],
+      form: {
+        id: null,
+        name: "",
+        genre: "",
+        schoolId: "",
+      },
+      isEditing: false,
+      error: null,
+      showDeleteModal: false,
+      deleteStudentId: null,
+    };
+  },
+  async mounted() {
+    await this.fetchStudents();
+  },
+  methods: {
+    async fetchStudents() {
+      try {
+        const response = await getAllStudents();
+        this.students = response.data;
+      } catch (err) {
+        this.error = err.message;
+      }
+    },
+    async addStudent() {
+      try {
+        await createStudent(this.form);
+        this.resetForm();
+        await this.fetchStudents();
+      } catch (err) {
+        this.error = err.message;
+      }
+    },
+    editStudent(student) {
+      this.form = { ...student };
+      this.isEditing = true;
+    },
+    async updateStudent() {
+      try {
+        await updateStudent(this.form._id, this.form);
+        this.resetForm();
+        await this.fetchStudents();
+      } catch (err) {
+        this.error = err.message;
+      }
+    },
+    deleteStudentConfirmation(id) {
+      this.deleteStudentId = id;
+      this.showDeleteModal = true;
+    },
+    closeDeleteModal() {
+      this.showDeleteModal = false;
+      this.deleteStudentId = null;
+    },
+    async deleteStudent(id) {
+      try {
+        await deleteStudent(id);
+        this.showDeleteModal = false;
+        await this.fetchStudents();
+      } catch (err) {
+        this.error = err.message;
+      }
+    },
+    resetForm() {
+      this.form = { id: null, name: "", genre: "", schoolId: "" };
+      this.isEditing = false;
+    },
+  },
+};
+</script>
+
+<style scoped>
+.error {
+  color: red;
+}
+</style>
+----------------------------------
+Chemin : my-vue-front/src/services/api.js
+Titre : api.js
+Contenu :
+import axios from "axios";
+
+const API_SCHOOL = "http://localhost:8081";
+const API_STUDENT = "http://localhost:8082";
+
+// Écoles
+export async function getAllSchools() {
+  return axios.get(`${API_SCHOOL}/schools`);
+}
+
+export async function createSchool(data) {
+  return axios.post(`${API_SCHOOL}/schools`, data);
+}
+
+export async function updateSchool(id, data) {
+  return axios.put(`${API_SCHOOL}/schools/${id}`, data);
+}
+
+export async function deleteSchool(id) {
+  return axios.delete(`${API_SCHOOL}/schools/${id}`);
+}
+
+// Étudiants
+export async function getAllStudents() {
+  return axios.get(`${API_STUDENT}/students`);
+}
+
+export async function createStudent(data) {
+  return axios.post(`${API_STUDENT}/students`, data);
+}
+
+export async function updateStudent(id, data) {
+  return axios.put(`${API_STUDENT}/students/${id}`, data);
+}
+
+export async function deleteStudent(id) {
+  return axios.delete(`${API_STUDENT}/students/${id}`);
+}
+----------------------------------
+Chemin : my-vue-front/vite.config.js
+Titre : vite.config.js
+Contenu :
+import { defineConfig } from 'vite';
+import vue from '@vitejs/plugin-vue';
+
+export default defineConfig({
+  plugins: [vue()],
+});
+----------------------------------
+Chemin : my-vue-front/.vscode/extensions.json
+Titre : extensions.json
+Contenu :
+{
+  "recommendations": ["Vue.volar"]
+}
+----------------------------------
+Chemin : my-vue-front/index.html
+Titre : index.html
+Contenu :
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Vue Front - Microservices Demo</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <!-- Vite injecte le script main.js en mode dev -->
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
+----------------------------------
+Chemin : my-vue-front/Dockerfile
+Titre : Dockerfile
+Contenu :
+# Étape 1 : Build de l'application Vue.js
+FROM node:18-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+# Étape 2 : Utilisation de Node.js pour servir les fichiers
+FROM node:18-alpine
+WORKDIR /app
+COPY --from=build /app/dist /app
+RUN npm install express
+EXPOSE 8080
+
+# Script de démarrage pour servir les fichiers statiques
+CMD ["node", "-e", "const express = require('express'); const app = express(); const port = 8080; app.use(express.static('./')); app.listen(port, () => console.log('Application running on http://localhost:' + port));"]
+----------------------------------
+Chemin : my-vue-front/tailwind.config.js
+Titre : tailwind.config.js
+Contenu :
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: [
+    "./index.html",
+    "./src/**/*.{vue,js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+};
+----------------------------------
+Chemin : my-vue-front/package.json
+Titre : package.json
+Contenu :
+{
+  "name": "my-vue-front",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@popperjs/core": "^2.11.8",
+    "axios": "^1.7.9",
+    "bootstrap": "^5.3.3",
+    "bootstrap-icons": "^1.11.3",
+    "cors": "^2.8.5",
+    "vue": "^3.5.13",
+    "vue-router": "^4.1.6"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "vite": "^6.0.5"
+  }
+}
+----------------------------------
+Chemin : docker-compose.yml
+Titre : docker-compose.yml
+Contenu :
+version: '3.8'
+services:
+  # Base PostgreSQL pour school-service
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres_db
+    environment:
+      POSTGRES_DB: schooldb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # Base MongoDB pour student-service
+  mongo:
+    image: mongo:6.0
+    container_name: mongo_db
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  # Microservice school-service (Node + Express)
+  school-service:
+    build:
+      context: ./school-service
+      dockerfile: Dockerfile
+    container_name: school_service
+    ports:
+      - "8081:8081"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: schooldb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    depends_on:
+      - postgres
+    volumes:
+      - ./school-service:/app
+      - /app/node_modules # Ignore les node_modules pour éviter les conflits
+
+  # Microservice student-service (Node + Express + Mongoose)
+  student-service:
+    build:
+      context: ./student-service
+      dockerfile: Dockerfile
+    container_name: student_service
+    ports:
+      - "8082:8082"
+    environment:
+      MONGO_URI: "mongodb://mongo:27017/studentdb"
+      SCHOOL_SERVICE_URL: "http://school-service:8081"
+    depends_on:
+      - mongo
+      - school-service
+    volumes:
+      - ./student-service:/app
+      - /app/node_modules # Ignore les node_modules pour éviter les conflits
+
+  # Front Vue (Vite + NGINX)
+
+  vue-front:
+    build:
+      context: ./my-vue-front
+      dockerfile: Dockerfile
+    container_name: vue_front
+    ports:
+      - "8080:8080"
+
+
+volumes:
+  postgres_data:
+  mongo_data:
+----------------------------------
+Chemin : student-service/models/student.js
+Titre : student.js
+Contenu :
+const mongoose = require("mongoose");
+
+const studentSchema = new mongoose.Schema({
+  name: String,
+  genre: String,
+  schoolId: Number, // l'id de l'école
+});
+
+module.exports = mongoose.model("Student", studentSchema);
+----------------------------------
+Chemin : student-service/Dockerfile
+Titre : Dockerfile
+Contenu :
+FROM node:18-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+
+EXPOSE 8082
+
+CMD ["npm", "run", "dev"]
+----------------------------------
+Chemin : student-service/services/schoolService.js
+Titre : schoolService.js
+Contenu :
+const axios = require("axios");
+
+async function getSchoolById(schoolId) {
+  const baseUrl = process.env.SCHOOL_SERVICE_URL || "http://localhost:8081";
+  
+  try {
+    const response = await axios.get(`${baseUrl}/schools/${schoolId}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Erreur lors de la récupération de l'école avec id=${schoolId}`, error.message);
+    return null;
+  }
+}
+
+module.exports = { getSchoolById };
+----------------------------------
+Chemin : student-service/package.json
+Titre : package.json
+Contenu :
+{
+  "name": "student-service",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "axios": "^1.7.9",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "mongoose": "^8.9.4"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}
+----------------------------------
+Chemin : student-service/routes/studentRoutes.js
+Titre : studentRoutes.js
+Contenu :
+const express = require("express");
+const router = express.Router();
+const Student = require("../models/student");
+const { getSchoolById } = require("../services/schoolService");
+
+// CREATE
+router.post("/", async (req, res) => {
+  try {
+    const student = await Student.create(req.body);
+    res.status(201).json(student);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// READ ALL
+router.get("/", async (req, res) => {
+  try {
+    const students = await Student.find();
+    res.json(students);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// READ ONE (avec l'école incluse dans l'objet étudiant)
+router.get("/:id", async (req, res) => {
+    try {
+      const student = await Student.findById(req.params.id);
+      if (!student) {
+        return res.status(404).json({ error: "Student not found" });
+      }
+  
+      let school = null;
+      if (student.schoolId) {
+        school = await getSchoolById(student.schoolId);
+      }
+  
+      // Ajouter les détails de l'école directement à l'objet étudiant
+      const studentWithSchool = {
+        ...student.toObject(), // Convertit le modèle Mongoose en objet JS
+        school: school || null, // Inclure l'école ou null si introuvable
+      };
+  
+      res.json({ student: studentWithSchool });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  
+
+// UPDATE
+router.put("/:id", async (req, res) => {
+  try {
+    const updatedStudent = await Student.findByIdAndUpdate(req.params.id, req.body, {
+      new: true
+    });
+    if (!updatedStudent) {
+      return res.status(404).json({ error: "Student not found" });
+    }
+    res.json(updatedStudent);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE
+router.delete("/:id", async (req, res) => {
+  try {
+    const deletedStudent = await Student.findByIdAndDelete(req.params.id);
+    if (!deletedStudent) {
+      return res.status(404).json({ error: "Student not found" });
+    }
+    res.status(204).end();
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = router;
+----------------------------------
+Chemin : student-service/config/db.js
+Titre : db.js
+Contenu :
+const mongoose = require("mongoose");
+
+mongoose.connect(process.env.MONGO_URI || "mongodb://localhost:27017/studentdb", {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+});
+
+module.exports = mongoose;
+----------------------------------
+Chemin : student-service/index.js
+Titre : index.js
+Contenu :
+const express = require("express");
+const cors = require("cors"); // Import de cors
+const mongoose = require("./config/db");
+const studentRoutes = require("./routes/studentRoutes");
+
+const app = express();
+const PORT = process.env.PORT || 8082;
+
+// Activer CORS avec une configuration explicite
+app.use(
+  cors({
+    origin: "http://localhost:8080", // Autorise uniquement cette origine
+    methods: "GET,POST,PUT,DELETE", // Méthodes autorisées
+    allowedHeaders: "Content-Type,Authorization", // Headers autorisés
+  })
+);
+
+// Middleware pour ajouter manuellement les en-têtes si nécessaire
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "http://localhost:8080");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+  );
+  if (req.method === "OPTIONS") {
+    res.header("Access-Control-Allow-Methods", "PUT, POST, PATCH, DELETE, GET");
+    return res.status(200).json({});
+  }
+  next();
+});
+
+app.use(express.json());
+app.use("/students", studentRoutes);
+
+mongoose.connection.on("connected", () => {
+  console.log("Connected to MongoDB");
+  app.listen(PORT, () => {
+    console.log(`Student service running on port ${PORT}`);
+  });
+});
+
+mongoose.connection.on("error", (err) => {
+  console.error("MongoDB connection error:", err);
+});
+----------------------------------

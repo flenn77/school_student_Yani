@@ -1,0 +1,76 @@
+version: '3.8'
+services:
+  # Base PostgreSQL pour school-service
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres_db
+    environment:
+      POSTGRES_DB: schooldb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # Base MongoDB pour student-service
+  mongo:
+    image: mongo:6.0
+    container_name: mongo_db
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  # Microservice school-service (Node + Express)
+  school-service:
+    build:
+      context: ./school-service
+      dockerfile: Dockerfile
+    container_name: school_service
+    ports:
+      - "8081:8081"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: schooldb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    depends_on:
+      - postgres
+    volumes:
+      - ./school-service:/app
+      - /app/node_modules # Ignore les node_modules pour éviter les conflits
+
+  # Microservice student-service (Node + Express + Mongoose)
+  student-service:
+    build:
+      context: ./student-service
+      dockerfile: Dockerfile
+    container_name: student_service
+    ports:
+      - "8082:8082"
+    environment:
+      MONGO_URI: "mongodb://mongo:27017/studentdb"
+      SCHOOL_SERVICE_URL: "http://school-service:8081"
+    depends_on:
+      - mongo
+      - school-service
+    volumes:
+      - ./student-service:/app
+      - /app/node_modules # Ignore les node_modules pour éviter les conflits
+
+  # Front Vue (Vite + NGINX)
+
+  vue-front:
+    build:
+      context: ./my-vue-front
+      dockerfile: Dockerfile
+    container_name: vue_front
+    ports:
+      - "8080:8080"
+
+
+volumes:
+  postgres_data:
+  mongo_data:
