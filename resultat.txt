@@ -49,6 +49,7 @@ Contenu :
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "axios": "^1.7.9",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "pg": "^8.13.1",
@@ -152,19 +153,23 @@ Chemin : school-service/index.js
 Titre : index.js
 Contenu :
 const express = require("express");
-const cors = require("cors"); // Import de cors
+const cors = require("cors");
 const sequelize = require("./config/db");
 const schoolRoutes = require("./routes/schoolRoutes");
+const axios = require("axios");
 
 const app = express();
 const PORT = process.env.PORT || 8081;
+const SERVICE_NAME = "school-service";
+const SERVICE_ID = `${SERVICE_NAME}-${PORT}`; // Un ID unique basé sur le port pour gérer plusieurs instances
+const CONSUL_ADDRESS = process.env.CONSUL_HTTP_ADDR || "http://localhost:8500";
 
 // Activer CORS avec une configuration explicite
 app.use(
   cors({
-    origin: "http://localhost:8080", // Autorise uniquement cette origine
-    methods: "GET,POST,PUT,DELETE", // Méthodes autorisées
-    allowedHeaders: "Content-Type,Authorization", // Headers autorisés
+    origin: "http://localhost:8080",
+    methods: "GET,POST,PUT,DELETE",
+    allowedHeaders: "Content-Type,Authorization",
   })
 );
 
@@ -185,15 +190,59 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use("/schools", schoolRoutes);
 
-sequelize.sync()
-  .then(() => {
+// Route de health check pour Consul
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "UP", timestamp: new Date() });
+});
+
+// Enregistrer le service auprès de Consul
+async function registerWithConsul() {
+  try {
+    const registrationData = {
+      Name: SERVICE_NAME,
+      ID: SERVICE_ID,
+      Address: "school-service",
+      Port: PORT,
+      Check: {
+        HTTP: `http://school-service:${PORT}/health`,
+        Interval: "10s",
+        Timeout: "5s",
+      },
+    };
+    await axios.put(`${CONSUL_ADDRESS}/v1/agent/service/register`, registrationData);
+    console.log(`Service ${SERVICE_ID} registered with Consul`);
+  } catch (err) {
+    console.error(`Failed to register service with Consul: ${err.message}`);
+  }
+}
+
+// Retirer le service de Consul lors de l'arrêt
+async function deregisterFromConsul() {
+  try {
+    await axios.put(`${CONSUL_ADDRESS}/v1/agent/service/deregister/${SERVICE_ID}`);
+    console.log(`Service ${SERVICE_ID} deregistered from Consul`);
+  } catch (err) {
+    console.error(`Failed to deregister service from Consul: ${err.message}`);
+  }
+}
+
+process.on("SIGINT", async () => {
+  await deregisterFromConsul();
+  process.exit();
+});
+
+// Synchronisation de la base de données et démarrage du service
+sequelize
+  .sync()
+  .then(async () => {
     console.log("Connected to PostgreSQL and synced models");
+    await registerWithConsul();
     app.listen(PORT, () => {
       console.log(`School service running on port ${PORT}`);
     });
   })
   .catch((err) => {
-    console.error("Unable to connect to the database:", err);
+    console.error(`Unable to connect to the database: ${err.message}`);
   });
 ----------------------------------
 Chemin : my-vue-front/src/style.css
@@ -622,10 +671,8 @@ Contenu :
   <div class="min-h-screen bg-gray-50 text-gray-800 flex flex-col items-center p-6">
     <h2 class="text-3xl font-bold mb-6 text-blue-600">Liste des étudiants</h2>
 
-    <!-- Message d'erreur -->
     <div v-if="error" class="text-red-500 mb-4">{{ error }}</div>
 
-    <!-- Tableau des étudiants -->
     <table class="table-auto w-full max-w-5xl bg-white shadow-md rounded-lg mb-8">
       <thead class="bg-gray-200">
         <tr>
@@ -652,7 +699,7 @@ Contenu :
               Modifier
             </button>
             <button
-              @click="deleteStudentConfirmation(student._id)"
+              @click="deleteStudent(student._id)"
               class="px-4 py-2 bg-black text-white rounded hover:bg-gray-800 transition"
             >
               Supprimer
@@ -662,7 +709,6 @@ Contenu :
       </tbody>
     </table>
 
-    <!-- Formulaire pour ajouter/modifier -->
     <div class="w-full max-w-5xl bg-white shadow rounded-lg p-6">
       <h3 class="text-xl font-semibold mb-4">
         {{ isEditing ? "Modifier un étudiant" : "Ajouter un étudiant" }}
@@ -736,15 +782,13 @@ export default {
     return {
       students: [],
       form: {
-        id: null,
+        _id: null,
         name: "",
         genre: "",
         schoolId: "",
       },
       isEditing: false,
       error: null,
-      showDeleteModal: false,
-      deleteStudentId: null,
     };
   },
   async mounted() {
@@ -781,36 +825,21 @@ export default {
         this.error = err.message;
       }
     },
-    deleteStudentConfirmation(id) {
-      this.deleteStudentId = id;
-      this.showDeleteModal = true;
-    },
-    closeDeleteModal() {
-      this.showDeleteModal = false;
-      this.deleteStudentId = null;
-    },
     async deleteStudent(id) {
       try {
         await deleteStudent(id);
-        this.showDeleteModal = false;
         await this.fetchStudents();
       } catch (err) {
-        this.error = err.message;
+        this.error = "Erreur lors de la suppression.";
       }
     },
     resetForm() {
-      this.form = { id: null, name: "", genre: "", schoolId: "" };
+      this.form = { _id: null, name: "", genre: "", schoolId: "" };
       this.isEditing = false;
     },
   },
 };
 </script>
-
-<style scoped>
-.error {
-  color: red;
-}
-</style>
 ----------------------------------
 Chemin : my-vue-front/src/services/api.js
 Titre : api.js
@@ -902,11 +931,11 @@ RUN npm run build
 FROM node:18-alpine
 WORKDIR /app
 COPY --from=build /app/dist /app
-RUN npm install express
+RUN npm install express axios
 EXPOSE 8080
 
-# Script de démarrage pour servir les fichiers statiques
-CMD ["node", "-e", "const express = require('express'); const app = express(); const port = 8080; app.use(express.static('./')); app.listen(port, () => console.log('Application running on http://localhost:' + port));"]
+# Script de démarrage pour inclure Consul
+CMD ["node", "-e", "const express = require('express'); const axios = require('axios'); const app = express(); const port = 8080; const CONSUL_ADDRESS = process.env.CONSUL_HTTP_ADDR || 'http://localhost:8500'; const SERVICE_ID = 'vue-front'; app.use(express.static('./')); axios.put(`${CONSUL_ADDRESS}/v1/agent/service/register`, { Name: 'vue-front', ID: SERVICE_ID, Address: 'vue-front', Port: port, Check: { HTTP: `http://vue-front:${port}`, Interval: '10s', Timeout: '5s' } }).then(() => console.log('Service vue-front registered with Consul')).catch(err => console.error('Failed to register vue-front with Consul:', err.message)); process.on('SIGINT', async () => { try { await axios.put(`${CONSUL_ADDRESS}/v1/agent/service/deregister/${SERVICE_ID}`); console.log('Service vue-front deregistered from Consul'); process.exit(); } catch (err) { console.error('Failed to deregister vue-front from Consul:', err.message); process.exit(1); } }); app.listen(port, () => console.log('Application running on http://localhost:' + port));"]
 ----------------------------------
 Chemin : my-vue-front/tailwind.config.js
 Titre : tailwind.config.js
@@ -981,6 +1010,19 @@ services:
     volumes:
       - mongo_data:/data/db
 
+  # Service de découverte Consul
+  consul:
+    image: consul:1.15.3
+    container_name: consul_service
+    command: agent -dev -client=0.0.0.0
+    ports:
+      - "8500:8500"       # Interface web de Consul
+      - "8600:8600/udp"   # Résolution DNS pour les services
+    environment:
+      CONSUL_BIND_INTERFACE: eth0
+    volumes:
+      - consul_data:/consul/data
+
   # Microservice school-service (Node + Express)
   school-service:
     build:
@@ -995,11 +1037,13 @@ services:
       POSTGRES_DB: schooldb
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      CONSUL_HTTP_ADDR: "http://consul_service:8500"
     depends_on:
       - postgres
+      - consul
     volumes:
       - ./school-service:/app
-      - /app/node_modules # Ignore les node_modules pour éviter les conflits
+      - /app/node_modules
 
   # Microservice student-service (Node + Express + Mongoose)
   student-service:
@@ -1010,17 +1054,18 @@ services:
     ports:
       - "8082:8082"
     environment:
-      MONGO_URI: "mongodb://mongo:27017/studentdb"
-      SCHOOL_SERVICE_URL: "http://school-service:8081"
+      MONGO_URI: "mongodb://mongo_db:27017/studentdb"
+      SCHOOL_SERVICE_URL: "http://school_service:8081"
+      CONSUL_HTTP_ADDR: "http://consul_service:8500"
     depends_on:
       - mongo
       - school-service
+      - consul
     volumes:
       - ./student-service:/app
-      - /app/node_modules # Ignore les node_modules pour éviter les conflits
+      - /app/node_modules
 
-  # Front Vue (Vite + NGINX)
-
+  # Front Vue (Vite + Express)
   vue-front:
     build:
       context: ./my-vue-front
@@ -1028,11 +1073,22 @@ services:
     container_name: vue_front
     ports:
       - "8080:8080"
-
+    environment:
+      CONSUL_HTTP_ADDR: "http://consul_service:8500"
+    depends_on:
+      - consul
+      - school-service
+      - student-service
 
 volumes:
   postgres_data:
   mongo_data:
+  consul_data:
+----------------------------------
+Chemin : docker
+Titre : docker
+Contenu :
+DOCKER_BUILDKIT=0 docker-compose up --build
 ----------------------------------
 Chemin : student-service/models/student.js
 Titre : student.js
@@ -1113,6 +1169,7 @@ Titre : studentRoutes.js
 Contenu :
 const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose"); // Gardez cette déclaration
 const Student = require("../models/student");
 const { getSchoolById } = require("../services/schoolService");
 
@@ -1138,35 +1195,33 @@ router.get("/", async (req, res) => {
 
 // READ ONE (avec l'école incluse dans l'objet étudiant)
 router.get("/:id", async (req, res) => {
-    try {
-      const student = await Student.findById(req.params.id);
-      if (!student) {
-        return res.status(404).json({ error: "Student not found" });
-      }
-  
-      let school = null;
-      if (student.schoolId) {
-        school = await getSchoolById(student.schoolId);
-      }
-  
-      // Ajouter les détails de l'école directement à l'objet étudiant
-      const studentWithSchool = {
-        ...student.toObject(), // Convertit le modèle Mongoose en objet JS
-        school: school || null, // Inclure l'école ou null si introuvable
-      };
-  
-      res.json({ student: studentWithSchool });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
+  try {
+    const student = await Student.findById(req.params.id);
+    if (!student) {
+      return res.status(404).json({ error: "Student not found" });
     }
-  });
-  
+
+    let school = null;
+    if (student.schoolId) {
+      school = await getSchoolById(student.schoolId);
+    }
+
+    const studentWithSchool = {
+      ...student.toObject(),
+      school: school || null,
+    };
+
+    res.json({ student: studentWithSchool });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // UPDATE
 router.put("/:id", async (req, res) => {
   try {
     const updatedStudent = await Student.findByIdAndUpdate(req.params.id, req.body, {
-      new: true
+      new: true,
     });
     if (!updatedStudent) {
       return res.status(404).json({ error: "Student not found" });
@@ -1180,6 +1235,10 @@ router.put("/:id", async (req, res) => {
 // DELETE
 router.delete("/:id", async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: "Invalid ID format" });
+    }
+
     const deletedStudent = await Student.findByIdAndDelete(req.params.id);
     if (!deletedStudent) {
       return res.status(404).json({ error: "Student not found" });
@@ -1211,9 +1270,13 @@ const express = require("express");
 const cors = require("cors"); // Import de cors
 const mongoose = require("./config/db");
 const studentRoutes = require("./routes/studentRoutes");
+const axios = require("axios");
 
 const app = express();
 const PORT = process.env.PORT || 8082;
+const SERVICE_NAME = "student-service";
+const SERVICE_ID = `${SERVICE_NAME}-${PORT}`; // ID unique basé sur le port
+const CONSUL_ADDRESS = process.env.CONSUL_HTTP_ADDR || "http://localhost:8500";
 
 // Activer CORS avec une configuration explicite
 app.use(
@@ -1241,8 +1304,51 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use("/students", studentRoutes);
 
-mongoose.connection.on("connected", () => {
+// Route de health check pour Consul
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "UP", timestamp: new Date() });
+});
+
+// Enregistrer le service auprès de Consul
+async function registerWithConsul() {
+  try {
+    const registrationData = {
+      Name: SERVICE_NAME,
+      ID: SERVICE_ID,
+      Address: "student-service",
+      Port: PORT,
+      Check: {
+        HTTP: `http://student-service:${PORT}/health`,
+        Interval: "10s",
+        Timeout: "5s",
+      },
+    };
+    await axios.put(`${CONSUL_ADDRESS}/v1/agent/service/register`, registrationData);
+    console.log(`Service ${SERVICE_ID} registered with Consul`);
+  } catch (err) {
+    console.error(`Failed to register service with Consul: ${err.message}`);
+  }
+}
+
+// Retirer le service de Consul lors de l'arrêt
+async function deregisterFromConsul() {
+  try {
+    await axios.put(`${CONSUL_ADDRESS}/v1/agent/service/deregister/${SERVICE_ID}`);
+    console.log(`Service ${SERVICE_ID} deregistered from Consul`);
+  } catch (err) {
+    console.error(`Failed to deregister service from Consul: ${err.message}`);
+  }
+}
+
+process.on("SIGINT", async () => {
+  await deregisterFromConsul();
+  process.exit();
+});
+
+// Connexion à MongoDB et démarrage du serveur
+mongoose.connection.on("connected", async () => {
   console.log("Connected to MongoDB");
+  await registerWithConsul();
   app.listen(PORT, () => {
     console.log(`Student service running on port ${PORT}`);
   });
