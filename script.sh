@@ -9,8 +9,9 @@ output_file="resultat.txt"
 # Parcourir tous les fichiers en excluant les dossiers et fichiers spécifiés
 find . -type f \
     ! -path "*/node_modules/*" \
+    ! -path "*/my-vue-front/*" \
     ! -path "*/.git/*" \
-    ! -path "*/.nuxt/*" \
+    ! -path "*/.next/*" \
     ! -name "make" \
     ! -name "package-lock.json" \
     ! -name ".git*" \
@@ -25,6 +26,7 @@ find . -type f \
     ! -iname "*.jpg" \
     ! -iname "*.jpeg" \
     ! -iname "*.png" \
+    ! -iname "*.md" \
     ! -iname "*.gif" \
     ! -iname "*.bmp" \
     ! -iname "*.tif" \

@@ -7,31 +7,17 @@ const axios = require("axios");
 const app = express();
 const PORT = process.env.PORT || 8081;
 const SERVICE_NAME = "school-service";
-const SERVICE_ID = `${SERVICE_NAME}-${PORT}`; // Un ID unique basé sur le port pour gérer plusieurs instances
+const SERVICE_ID = `${SERVICE_NAME}-${PORT}`; // ID unique basé sur le port
 const CONSUL_ADDRESS = process.env.CONSUL_HTTP_ADDR || "http://localhost:8500";
 
 // Activer CORS avec une configuration explicite
 app.use(
   cors({
-    origin: "http://localhost:8080",
-    methods: "GET,POST,PUT,DELETE",
-    allowedHeaders: "Content-Type,Authorization",
+    origin: "http://localhost:3000", // Remplacez cela par le port de votre frontend Nuxt/React
+    methods: "GET,POST,PUT,DELETE", // Méthodes autorisées
+    allowedHeaders: "Content-Type,Authorization", // Headers autorisés
   })
 );
-
-// Middleware pour ajouter manuellement les en-têtes si nécessaire
-app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "http://localhost:8080");
-  res.header(
-    "Access-Control-Allow-Headers",
-    "Origin, X-Requested-With, Content-Type, Accept, Authorization"
-  );
-  if (req.method === "OPTIONS") {
-    res.header("Access-Control-Allow-Methods", "PUT, POST, PATCH, DELETE, GET");
-    return res.status(200).json({});
-  }
-  next();
-});
 
 app.use(express.json());
 app.use("/schools", schoolRoutes);
@@ -47,10 +33,10 @@ async function registerWithConsul() {
     const registrationData = {
       Name: SERVICE_NAME,
       ID: SERVICE_ID,
-      Address: "school-service",
+      Address: "school-service", // Utiliser l'adresse ou le nom du conteneur si nécessaire
       Port: PORT,
       Check: {
-        HTTP: `http://school-service:${PORT}/health`,
+        HTTP: `http://school-service:${PORT}/health`,  // Vérification via le nom du service
         Interval: "10s",
         Timeout: "5s",
       },
@@ -59,16 +45,6 @@ async function registerWithConsul() {
     console.log(`Service ${SERVICE_ID} registered with Consul`);
   } catch (err) {
     console.error(`Failed to register service with Consul: ${err.message}`);
-  }
-}
-
-// Retirer le service de Consul lors de l'arrêt
-async function deregisterFromConsul() {
-  try {
-    await axios.put(`${CONSUL_ADDRESS}/v1/agent/service/deregister/${SERVICE_ID}`);
-    console.log(`Service ${SERVICE_ID} deregistered from Consul`);
-  } catch (err) {
-    console.error(`Failed to deregister service from Consul: ${err.message}`);
   }
 }
 
@@ -83,7 +59,7 @@ sequelize
   .then(async () => {
     console.log("Connected to PostgreSQL and synced models");
     await registerWithConsul();
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => { // Ecoute sur toutes les interfaces réseau
       console.log(`School service running on port ${PORT}`);
     });
   })

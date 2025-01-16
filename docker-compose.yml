@@ -1,6 +1,21 @@
 version: '3.8'
+
 services:
-  # Base PostgreSQL pour school-service
+  # Traefik comme reverse proxy
+  traefik:
+    image: traefik:v2.10
+    container_name: traefik
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "8080:8080" # Interface web de Traefik
+      - "80:80" # Reverse proxy pour les services
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  # Service PostgreSQL
   postgres:
     image: postgres:15-alpine
     container_name: postgres_db
@@ -13,7 +28,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # Base MongoDB pour student-service
+  # Service MongoDB
   mongo:
     image: mongo:6.0
     container_name: mongo_db
@@ -28,21 +43,17 @@ services:
     container_name: consul_service
     command: agent -dev -client=0.0.0.0
     ports:
-      - "8500:8500"       # Interface web de Consul
-      - "8600:8600/udp"   # Résolution DNS pour les services
+      - "8500:8500"
     environment:
       CONSUL_BIND_INTERFACE: eth0
     volumes:
       - consul_data:/consul/data
 
-  # Microservice school-service (Node + Express)
+  # Microservice school-service avec répartition de charge
   school-service:
     build:
       context: ./school-service
       dockerfile: Dockerfile
-    container_name: school_service
-    ports:
-      - "8081:8081"
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -56,15 +67,25 @@ services:
     volumes:
       - ./school-service:/app
       - /app/node_modules
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.school-service.rule=PathPrefix(`/schools`)"
+      - "traefik.http.routers.school-service.entrypoints=web"
+      - "traefik.http.routers.school-service.service=school-service"
+      - "traefik.http.services.school-service.loadbalancer.server.port=8081"
+      - "traefik.http.services.school-service.loadbalancer.server.scheme=http" # 🚨 Ajout important
+      - "traefik.docker.network=mon-projet_default"
+    deploy:
+      replicas: 1 # ❌ Mets 1 réplica temporairement pour voir si le problème vient du load balancing
+    ports:
+      - "8081:8081"
 
-  # Microservice student-service (Node + Express + Mongoose)
+  # Microservice student-service (pas de changement)
   student-service:
     build:
       context: ./student-service
       dockerfile: Dockerfile
     container_name: student_service
-    ports:
-      - "8082:8082"
     environment:
       MONGO_URI: "mongodb://mongo_db:27017/studentdb"
       SCHOOL_SERVICE_URL: "http://school_service:8081"
@@ -76,21 +97,29 @@ services:
     volumes:
       - ./student-service:/app
       - /app/node_modules
-
-  # Front Vue (Vite + Express)
-  vue-front:
-    build:
-      context: ./my-vue-front
-      dockerfile: Dockerfile
-    container_name: vue_front
+    labels:
+      - "traefik.http.routers.student-service.rule=PathPrefix(`/students`)"
+      - "traefik.http.services.student-service.loadbalancer.server.port=8082"
     ports:
-      - "8080:8080"
+      - "8082:8082"
+
+  # Service frontend (Next.js)
+  next-front:
+    build:
+      context: ./my-next-front
+      dockerfile: Dockerfile
+    container_name: next_front
     environment:
       CONSUL_HTTP_ADDR: "http://consul_service:8500"
     depends_on:
       - consul
       - school-service
       - student-service
+    ports:
+      - "3000:3000"
+    labels:
+      - "traefik.http.routers.next-front.rule=PathPrefix(`/`)"
+      - "traefik.http.services.next-front.loadbalancer.server.port=3000"
 
 volumes:
   postgres_data:

@@ -1,8 +1,9 @@
+// studentRoutes.js
 const express = require("express");
 const router = express.Router();
-const mongoose = require("mongoose"); // Gardez cette déclaration
+const mongoose = require("mongoose");
 const Student = require("../models/student");
-const { getSchoolById } = require("../services/schoolService");
+const { getAllSchools } = require("../services/schoolService"); // Nouvelle fonction
 
 // CREATE
 router.post("/", async (req, res) => {
@@ -14,17 +15,31 @@ router.post("/", async (req, res) => {
   }
 });
 
-// READ ALL
+// READ ALL (Optimisé avec récupération groupée des écoles)
 router.get("/", async (req, res) => {
   try {
     const students = await Student.find();
-    res.json(students);
+
+    // Récupérer toutes les écoles en une seule requête
+    const schools = await getAllSchools();
+    const schoolMap = schools.reduce((map, school) => {
+      map[school.id] = school;
+      return map;
+    }, {});
+
+    // Associer chaque étudiant à son école
+    const studentsWithSchools = students.map(student => ({
+      ...student.toObject(),
+      school: schoolMap[student.schoolId] || null
+    }));
+
+    res.json(studentsWithSchools);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// READ ONE (avec l'école incluse dans l'objet étudiant)
+// READ ONE (Pas de changement, récupération de l'école au cas par cas)
 router.get("/:id", async (req, res) => {
   try {
     const student = await Student.findById(req.params.id);
@@ -43,38 +58,6 @@ router.get("/:id", async (req, res) => {
     };
 
     res.json({ student: studentWithSchool });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// UPDATE
-router.put("/:id", async (req, res) => {
-  try {
-    const updatedStudent = await Student.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-    });
-    if (!updatedStudent) {
-      return res.status(404).json({ error: "Student not found" });
-    }
-    res.json(updatedStudent);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// DELETE
-router.delete("/:id", async (req, res) => {
-  try {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(400).json({ error: "Invalid ID format" });
-    }
-
-    const deletedStudent = await Student.findByIdAndDelete(req.params.id);
-    if (!deletedStudent) {
-      return res.status(404).json({ error: "Student not found" });
-    }
-    res.status(204).end();
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
